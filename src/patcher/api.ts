@@ -7,6 +7,44 @@ import type { AppBuild } from "~/types/AppBuild";
 
 const UPDATE_DOMAIN = "https://music-desktop-application.s3.yandex.net";
 
+function getYamlFileName(): string {
+  switch (process.platform) {
+    case "darwin":
+      return "latest-mac.yml";
+    case "win32":
+      return "latest.yml";
+    case "linux":
+      return "latest-linux.yml";
+    default:
+      return "latest.yml";
+  }
+}
+
+function filterBuildsForPlatform(files: AppBuild[]): AppBuild[] {
+  const arch = process.arch;
+
+  if (process.platform === "darwin") {
+    if (arch === "arm64") {
+      const arm = files.find((f) => f.path.includes("arm64"));
+      if (arm) return [arm];
+    }
+    const universal = files.find((f) => f.path.includes("universal"));
+    if (universal) return [universal];
+    const x64 = files.find((f) => f.path.includes("x64"));
+    if (x64) return [x64];
+  }
+
+  if (process.platform === "win32" && arch === "arm64") {
+    const arm = files.find((f) => f.path.includes("arm64"));
+    if (arm) return [arm];
+  }
+
+  const x64 = files.find((f) => f.path.includes("x64"));
+  if (x64) return [x64];
+
+  return files;
+}
+
 // Zod schema that describes the shape of the update YAML we expect from the server.
 const UpdateInfoSchema = z.object({
   files: z.array(
@@ -33,7 +71,8 @@ const UpdateInfoSchema = z.object({
  */
 export async function getStableBuild(): Promise<Result<AppBuild[], Error>> {
   try {
-    const response = await axios.get(`${UPDATE_DOMAIN}/stable/latest.yml`, {
+    const yamlFile = getYamlFileName();
+    const response = await axios.get(`${UPDATE_DOMAIN}/stable/${yamlFile}`, {
       responseType: "text",
       headers: {
         "User-Agent":
@@ -52,7 +91,7 @@ export async function getStableBuild(): Promise<Result<AppBuild[], Error>> {
 
     const info = parseResult.data;
 
-    const files = info.files.map((file) => ({
+    let files = info.files.map((file) => ({
       path: file.url,
       hash: file.sha512,
       size: file.size,
@@ -61,6 +100,8 @@ export async function getStableBuild(): Promise<Result<AppBuild[], Error>> {
       version: info.version,
       deprecatedVersions: info.commonConfig.DEPRECATED_VERSIONS,
     })) as AppBuild[];
+
+    files = filterBuildsForPlatform(files);
 
     return ok(files);
   } catch (error) {

@@ -257,7 +257,7 @@ electron.ipcMain.handle(
 );
 
 // window API - открытие папки для загрузки треков
-electron.ipcMain.on("yandexMusicMod.openDownloadDirectory", (_ev) => {
+electron.ipcMain.on("yandexMusicMod.openDownloadDirectory", async (_ev) => {
   let saveFolder;
   if (process.platform === "win32") {
     saveFolder = process.env.USERPROFILE + "\\YandexMod Download";
@@ -265,15 +265,11 @@ electron.ipcMain.on("yandexMusicMod.openDownloadDirectory", (_ev) => {
     saveFolder = (process.env.HOME || process.env.USERPROFILE) + "/YandexMod Download";
   }
 
-  if (customDownloadPath) {
-    saveFolder = customDownloadPath;
-  } else {
-    try {
-      const settings = JSON.parse(fs.readFileSync(settingsFilePath, "utf8"));
-      saveFolder = settings.downloadFolderPath || saveFolder;
-    } catch (e) {
-      console.log("failed to parse settings", e)
-    }
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsFilePath, "utf8"));
+    saveFolder = settings.downloadFolderPath || saveFolder;
+  } catch (e) {
+    console.log("failed to parse settings", e)
   }
 
   await electron.openPath(saveFolder)

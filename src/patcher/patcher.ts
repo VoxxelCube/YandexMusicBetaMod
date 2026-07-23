@@ -63,15 +63,32 @@ export async function processBuild(build: AppBuild) {
 
   logProgress(`[3] Find and extract app.asar`);
 
-  const appAsarPath = path.resolve(path.join(extractDir, "resources", "app.asar"));
-  const appIconPath = path.resolve(path.join(extractDir, "resources", "assets", "icon.ico"));
+  let appAsarPath: string;
+  let appIconPath: string | null = null;
 
-  if (appAsarPath) {
-    logProgress(`✔️   Found app.asar`);
+  if (isMacOS) {
+    const appBundle = fs.readdirSync(extractDir).find((entry) => entry.endsWith(".app"));
+    if (!appBundle) {
+      logProgress(`❌ .app bundle was not found inside the extracted installer for ${build.version}`);
+      return;
+    }
+
+    const bundlePath = path.join(extractDir, appBundle);
+    appAsarPath = path.join(bundlePath, "Contents", "Resources", "app.asar");
+    const iconPath = path.join(bundlePath, "Contents", "Resources", "assets", "icon.icns");
+    if (fs.existsSync(iconPath)) {
+      appIconPath = iconPath;
+    }
   } else {
+    appAsarPath = path.join(extractDir, "resources", "app.asar");
+    appIconPath = path.join(extractDir, "resources", "assets", "icon.ico");
+  }
+
+  if (!fs.existsSync(appAsarPath)) {
     logProgress(`❌ app.asar was not found inside the extracted installer for ${build.version}`);
     return;
   }
+  logProgress(`✔️   Found app.asar`);
 
   try {
     asar.extractAll(appAsarPath, buildSourceDir);
@@ -83,7 +100,9 @@ export async function processBuild(build: AppBuild) {
 
   try {
     fs.mkdirSync(path.join(buildModdedDir, "assets"), { recursive: true });
-    fs.copyFileSync(appIconPath, path.join(buildModdedDir, "assets", "icon.ico"));
+    if (appIconPath && fs.existsSync(appIconPath)) {
+      fs.copyFileSync(appIconPath, path.join(buildModdedDir, "assets", path.basename(appIconPath)));
+    }
     fs.copyFileSync(path.join(__projectRoot, "yaicon.png"), path.join(buildModdedDir, "assets", "icon.png"));
     if (isMacOS) {
       fs.copyFileSync(path.join(__projectRoot, "yaicon.png"), path.join(buildModdedDir, "assets", "icon.icns"));
@@ -160,7 +179,12 @@ export async function processBuild(build: AppBuild) {
     mac: {
       icon: "assets/icon.icns",
       category: "public.app-category.music",
-      target: "default",
+      target: [
+        {
+          target: "pkg",
+          arch: ["arm64"],
+        },
+      ],
     },
     linux: {
       icon: "assets/icon.png",
@@ -447,7 +471,7 @@ export async function processBuild(build: AppBuild) {
 
   // await $`bunx electron .`.cwd(buildModdedDir);
 
-  await $`bunx electron-builder`.cwd(buildModdedDir);
+  await $`npx --yes electron-builder --arm64`.cwd(buildModdedDir);
 
   logProgress(`✔️   Done`);
 
